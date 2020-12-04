@@ -84,7 +84,7 @@ tw_collocations <- textstat_collocations(tw_tokens, min_count = 5)
 tw_collocations <- tw_collocations[grepl(".* .*ournalis", tw_collocations$collocation, perl = T), ]
 tw_collocations$journalism <- grepl("ournalism", tw_collocations$collocation, perl = T)
 print(tw_collocations)
-write.csv2(token_counts, file = "output/unigram.csv", fileEncoding = "UTF-8")
+write.csv2(tw_collocations, file = "output/bigram.csv", fileEncoding = "UTF-8")
 ```
 
 # Trigram frequency
@@ -95,7 +95,7 @@ tw_collocations_3 <- textstat_collocations(tw_tokens, min_count = 5, size = 3)
 tw_collocations_3 <- tw_collocations_3[grepl(".* .*ournalis[^\\s]*$", tw_collocations_3$collocation, perl = T), ]
 tw_collocations_3$journalism <- grepl("ournalism", tw_collocations_3$collocation, perl = T)
 print(tw_collocations_3)
-write.csv2(token_counts, file = "output/unigram.csv", fileEncoding = "UTF-8")
+write.csv2(tw_collocations_3, file = "output/trigram.csv", fileEncoding = "UTF-8")
 ```
 
 All extracted list are exported as CSV into the `output' directory for further processing.
