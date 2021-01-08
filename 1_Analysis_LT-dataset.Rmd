@@ -4,7 +4,7 @@ output:
   html_notebook
 ---
 
-We investigate unigram terms and mutlti-word units containing the pattern `ournalis` e.g. journalism or journalist, in English Twitter. The LT dataset comprises tweets from the Twitter 1 % Streaming API. From this, all English language tweets (as identified by Twitter metadata) which contain the string `ournalis` are extracted. To exclude occurrences of twitter user handles (e.g. @cnn_journalist) from replies, user handles have been removed before pattern matching. 
+We investigate unigram terms and mutlti-word units containing the pattern `urnalis` e.g. journalism or journalist, in English Twitter. The LT dataset comprises tweets from the Twitter 1 % Streaming API. From this, all English language tweets (as identified by Twitter metadata) which contain the string `urnalis` are extracted. To exclude occurrences of twitter user handles (e.g. @cnn_journalist) from replies, user handles have been removed before pattern matching. 
 
 ```{r readdata, message=FALSE}
 options(stringsAsFactors = F, scipen = 999)
@@ -12,7 +12,7 @@ options(stringsAsFactors = F, scipen = 999)
 library(dplyr)
 
 # read data 
-csv_files <- list.files("data", pattern = "*.tsv", full.names = T)
+csv_files <- list.files("data2", pattern = "*.tsv", full.names = T)
 twitterdata <- do.call(rbind, lapply(csv_files, read.csv, sep = "\t", header = F, encoding = "UTF-8"))
 colnames(twitterdata) <- c(
   "id", 
@@ -51,6 +51,8 @@ print(head(twitterdata))
 
 We extract tweets from 2018, 2019 and 2020 along with a number of metadata.
 
+This is how many tweets we collected.
+
 ```{r stats}
 counts_per_year <- twitterdata %>%
   group_by(year) %>%
@@ -58,20 +60,31 @@ counts_per_year <- twitterdata %>%
 print(counts_per_year)
 ```
 
+Here, we count the different word frequencies of single uigram tokens containing the pattern `urnalis`.
+
 ```{r xjournalisms, message=F}
 require(quanteda)
 tw_tokens <- corpus(twitterdata) %>%
   tokens() %>%
-  tokens_keep(pattern = "ournalis", valuetype = "regex") %>%
+  tokens_keep(pattern = "urnalis", valuetype = "regex") %>%
   dfm()
 token_counts <- tw_tokens %>%
   textstat_frequency()
-token_counts$journalism <- grepl("ournalism", token_counts$feature, perl = T)
+token_counts$journalism <- grepl("urnalism", token_counts$feature, perl = T)
 print(token_counts)
 write.csv2(token_counts, file = "output/unigram.csv", fileEncoding = "UTF-8")
 ```
 
+Are there any pattern matches without a j?
+
+```{r variations, message=F}
+token_counts %>%
+  filter(!grepl("j", feature))
+```
+
 # Bigram frequency
+
+We also look at frequent patterns of two consecutive words where the last word contains the pattern. 
 
 ```{r mwu2}
 # create tokens object
@@ -81,19 +94,21 @@ tw_tokens <- corpus(twitterdata) %>%
 
 # collocations with size 2
 tw_collocations <- textstat_collocations(tw_tokens, min_count = 5)
-tw_collocations <- tw_collocations[grepl(".* .*ournalis", tw_collocations$collocation, perl = T), ]
-tw_collocations$journalism <- grepl("ournalism", tw_collocations$collocation, perl = T)
+tw_collocations <- tw_collocations[grepl(".* .*urnalis", tw_collocations$collocation, perl = T), ]
+tw_collocations$journalism <- grepl("urnalism", tw_collocations$collocation, perl = T)
 print(tw_collocations)
 write.csv2(tw_collocations, file = "output/bigram.csv", fileEncoding = "UTF-8")
 ```
 
 # Trigram frequency
 
+And we look at frequent patterns of three consecutive words where the last word contains the pattern.
+
 ```{r mwu3}
 # collocations with size 3
 tw_collocations_3 <- textstat_collocations(tw_tokens, min_count = 5, size = 3)
-tw_collocations_3 <- tw_collocations_3[grepl(".* .*ournalis[^\\s]*$", tw_collocations_3$collocation, perl = T), ]
-tw_collocations_3$journalism <- grepl("ournalism", tw_collocations_3$collocation, perl = T)
+tw_collocations_3 <- tw_collocations_3[grepl(".* .*urnalis[^\\s]*$", tw_collocations_3$collocation, perl = T), ]
+tw_collocations_3$journalism <- grepl("urnalism", tw_collocations_3$collocation, perl = T)
 print(tw_collocations_3)
 write.csv2(tw_collocations_3, file = "output/trigram.csv", fileEncoding = "UTF-8")
 ```
