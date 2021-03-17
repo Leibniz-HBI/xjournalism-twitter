@@ -146,7 +146,8 @@ Wiedemann, G., Yimam, S. M., & Biemann, C. (2020, December). UHH-LT at SemEval-2
 
 Run "oe20_classification.ipynb" on `all_tweets.csv` and load results. Take care that Twitter usernames and URLs are replaced according to the model.
 
-```{r old}
+```{r old_labels, message=F}
+# read binary labels from machine classifier
 all_labels <- readLines("all_tweets_labeled.csv", encoding = "UTF-8")
 twitterdata$offensive <- all_labels
 twitterdata$offensive_score <- ifelse(all_labels == "OFF", 1, 0)
