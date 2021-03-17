@@ -1,0 +1,181 @@
+---
+title: "X-Journalism 2"
+output:
+  html_notebook: default
+  html_document: 
+    toc: yes
+    number_sections: yes
+---
+
+* Filterung des Twitterkorpus auf Basis der Bi-Gramme
+* Sentiment detection und die offensive language detection
+* Maxqda Export für die weitere qualitative Analyse
+
+```{r readdata, message=FALSE}
+options(stringsAsFactors = F, scipen = 999)
+
+library(dplyr)
+
+# read data 
+csv_files <- list.files("data3", pattern = "*.tsv", full.names = T)
+twitterdata <- do.call(rbind, lapply(csv_files, read.csv, sep = "\t", header = F, encoding = "UTF-8"))
+colnames(twitterdata) <- c(
+  "id", 
+  "created_at", 
+  "text", 
+  "in_reply_to_status_id", 
+  "in_reply_to_user_id", 
+  "in_reply_to_screen_name",
+  "user.id",
+  "user.name",
+  "user.screen_name",
+  "verified",
+  "followers_count",
+  "friends_count",
+  "location",
+  "urls"
+)
+
+# convert dates
+old_locale <- Sys.getlocale("LC_TIME")
+invisible(Sys.setlocale("LC_TIME", "C"))
+format.str <- "%a %b %d %H:%M:%S %z %Y"
+twitterdata <- twitterdata %>% 
+  mutate(
+    date = as.POSIXct(strptime(created_at, format.str, tz = "GMT"), tz = "GMT")
+  ) %>%
+  mutate(
+    year = format(date, "%Y")
+  )
+invisible(Sys.setlocale("LC_TIME", old_locale))
+
+# filter for urnalism
+twitterdata <- twitterdata[grepl("urnalism", twitterdata$text, ignore.case = T), ]
+
+# filter for retweets 
+twitterdata <- twitterdata[!grepl("^RT ", twitterdata$text, perl = T), ]
+
+# filter duplicates
+twitterdata <- twitterdata[-which(duplicated(twitterdata$id)), ]
+
+print(head(twitterdata))
+```
+
+# Filter corpus
+
+```{r filtercorpus, message=F}
+require(quanteda)
+
+# filter for years
+twitterdata <- twitterdata[twitterdata$year %in% c("2019", "2020"), ]
+
+# filter for coded bigrams
+coded_data <- read.csv("bigram_JB_LS_WL.csv", encoding = "UTF-8")
+bigram_patterns <- phrase(coded_data$collocation)
+bigram_patterns <- bigram_patterns[coded_data$xjournalism == 1]
+bigrams_concatenated <- unlist(lapply(bigram_patterns, paste0, collapse = "_"))
+
+# create tokens object
+colnames(twitterdata)[1] <- "doc_id"
+tw_tokens <- corpus(twitterdata) %>%
+  tokens() %>%
+  tokens_tolower(keep_acronyms = T)
+
+# concatenate bigrams
+tw_tokens <- tokens_compound(tw_tokens, bigram_patterns)
+
+# count bigrams
+tw_dfm <- dfm(tw_tokens, tolower = F)
+tw_dfm <- tw_dfm[, bigrams_concatenated]
+tw_dfm <- tw_dfm > 0 # binary counts only
+tw_dfm <- tw_dfm[rowSums(tw_dfm) > 0, ]
+
+# add bigram label to each tweet
+df <- reshape2::melt(as.matrix(tw_dfm))
+df <- df[df$value == T, c("docs", "features")]
+colnames(df) <- c("doc_id", "xjournalism")
+twitterdata <- twitterdata %>%
+  left_join(df)
+
+# remove tweets without bigram label
+twitterdata <- twitterdata[!is.na(twitterdata$xjournalism), ]
+```
+
+How many did we get?
+
+```{r variations, message=F}
+twitterdata %>%
+  group_by(xjournalism) %>%
+  count()
+```
+
+
+# Sentiment Analysis 
+
+We use the NTLK Vader SentimentIntensityAnalyzer for sentiment scoring (a dictionary based method).
+
+```{r sentiment}
+# export tweets to csv
+write.csv(twitterdata[, c("doc_id", "text")], file = "all_tweets.csv", fileEncoding = "UTF-8")
+# run python script for sentiment and offensive language detection
+
+# load results from python script
+all_scores <- read.csv("all_tweets_scored.csv", encoding = "UTF-8")
+twitterdata$sentiment_score <- all_scores$score
+twitterdata$sentiment <- "POSITIVE"
+twitterdata$sentiment[twitterdata$sentiment_score == 0] <- "NEUTRAL"
+twitterdata$sentiment[twitterdata$sentiment_score < 0] <- "NEGATIVE"
+
+# how many of each label?
+print(table(twitterdata$sentiment))
+
+# how positive is the usage context if a xjournalism term
+twitterdata %>%
+  group_by(xjournalism) %>%
+  dplyr::summarize(Mean = mean(sentiment_score)) %>%
+  arrange(desc(Mean))
+```
+
+# Offensive Language Detection
+
+We use the approach as published in:
+
+```
+Wiedemann, G., Yimam, S. M., & Biemann, C. (2020, December). UHH-LT at SemEval-2020 task 12: Fine-tuning of pre-trained transformer networks for offensive language detection. In Proceedings of the Fourteenth Workshop on Semantic Evaluation (pp. 1638-1644).
+```
+
+Run "oe20_classification.ipynb" on `all_tweets.csv` and load results. Take care that Twitter usernames and URLs are replaced according to the model.
+
+```{r old}
+all_labels <- readLines("all_tweets_labeled.csv", encoding = "UTF-8")
+twitterdata$offensive <- all_labels
+twitterdata$offensive_score <- ifelse(all_labels == "OFF", 1, 0)
+
+# how offensive is the usage context if a xjournalism term
+twitterdata %>%
+  group_by(xjournalism) %>%
+  dplyr::summarize(Mean = mean(offensive_score)) %>%
+  arrange(desc(Mean))
+```
+
+
+# REFI-QDA Export 
+
+Unfortunately, we have to get rid off emojies to be able to correctly export tweets to MaxQDA. Not sure if this is an error of R or MaxQDA ...
+
+```{r refi}
+# csv first
+write.csv(twitterdata, file = "xjournalism_twitter.csv", fileEncoding = "UTF-8")
+
+twitterdata <- twitterdata %>%
+  arrange(xjournalism)
+
+# now export via refi-qda standard (this takes several minutes)
+source("dataframe_to_refi.R")
+dataframe_to_refi_group_by(
+  twitterdata, 
+  c("xjournalism", "sentiment", "offensive", "doc_id"), # "user.screen_name", "verified" 
+  "xjournalism.qdpx",
+  group_var = "xjournalism"
+)
+```
